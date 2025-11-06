@@ -2,8 +2,9 @@ streamlit
 tensorflow
 pandas
 numpy
-scikit-learn
 matplotlib
-kagglehub
+scikit-learn
+joblib
 gdown
+
 
