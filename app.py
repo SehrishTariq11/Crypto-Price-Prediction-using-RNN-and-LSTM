@@ -3,132 +3,95 @@ import os
 import zipfile
 import gdown
 import pandas as pd
-import numpy as np
+import tensorflow as tf
 import joblib
+import numpy as np
 import matplotlib.pyplot as plt
-from tensorflow.keras.models import load_model
 
 # -----------------------------
 # CONFIG
 # -----------------------------
-FILE_ID = "1Hz4UFpIbNdwhSJZlLUIxCIP4OMxnzKWJ"  # 👈 put your Google Drive File ID here
+ZIP_URL = "https://drive.google.com/uc?id=1Hz4UFpIbNdwhSJZlLUIxCIP4OMxnzKWJ"
 ZIP_PATH = "models_output.zip"
 MODELS_DIR = "models_output"
 
 # -----------------------------
-# STEP 1: SAFE SETUP FUNCTION
+# STEP 1: Download models if not exist
 # -----------------------------
-def setup_models():
-    try:
-        if not os.path.exists(MODELS_DIR):
-            st.info("⬇️ Downloading trained models from Google Drive... (~67MB)")
-            url = f"https://drive.google.com/uc?id={FILE_ID}"
-            gdown.download(url, ZIP_PATH, quiet=False)
+if not os.path.exists(MODELS_DIR):
+    st.write("⬇️ Downloading trained models from Google Drive... (~67MB)")
+    gdown.download(ZIP_URL, ZIP_PATH, quiet=False)
 
-            with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
-                zip_ref.extractall(".")
-            st.success("✅ Models extracted successfully!")
+    with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
+        zip_ref.extractall(".")
 
-               # Try to find any folder that contains model files
-        if not os.path.exists(MODELS_DIR):
-            for f in os.listdir("."):
-                path = os.path.join(".", f)
-                if os.path.isdir(path) and any(x in f.lower() for x in ["model", "output"]):
-                    os.rename(path, MODELS_DIR)
-                    st.info(f"📁 Renamed extracted folder '{f}' → '{MODELS_DIR}'")
-                    break
+    # --- Auto-detect models folder ---
+    if not os.path.exists(MODELS_DIR):
+        for f in os.listdir("."):
+            path = os.path.join(".", f)
+            if os.path.isdir(path) and any(x in f.lower() for x in ["model", "output"]):
+                os.rename(path, MODELS_DIR)
+                st.info(f"📁 Found and renamed extracted folder '{f}' → '{MODELS_DIR}'")
+                break
 
-
-        if not os.path.exists(MODELS_DIR):
-            st.error("❌ 'models_output' folder not found after extraction. Please check your Google Drive link.")
-            return False
-
-        return True
-
-    except Exception as e:
-        st.error(f"⚠️ Error setting up models: {e}")
-        return False
-
-# -----------------------------
-# STEP 2: LOAD MODELS & PREDICTIONS
-# -----------------------------
-def load_coin_data(coin_folder):
-    """Load scaler, model, and prediction data for a specific coin."""
-    try:
-        scaler = joblib.load(os.path.join(coin_folder, f"{coin_name}_scaler.pkl"))
-        lstm_model = load_model(os.path.join(coin_folder, f"{coin_name}_lstm_best.h5"))
-        preds = pd.read_csv(os.path.join(coin_folder, f"{coin_name}_predictions.csv"))
-        return scaler, lstm_model, preds
-    except Exception as e:
-        st.error(f"Error loading {coin_folder}: {e}")
-        return None, None, None
-
-# -----------------------------
-# STEP 3: FORECAST FUNCTION
-# -----------------------------
-def forecast_next_days(model, scaler, series, window_size=60, days=15):
-    data_scaled = scaler.transform(series)
-    seq = data_scaled[-window_size:].reshape(1, window_size, 1)
-    preds = []
-    for _ in range(days):
-        pred = model.predict(seq, verbose=0)
-        preds.append(pred[0][0])
-        seq = np.append(seq[:, 1:, :], [[pred]], axis=1)
-    preds_inv = scaler.inverse_transform(np.array(preds).reshape(-1, 1)).flatten()
-    return preds_inv
-
-# -----------------------------
-# STEP 4: STREAMLIT UI
-# -----------------------------
-st.set_page_config(page_title="Crypto Price Prediction", page_icon="💰", layout="wide")
-st.title("📈 Crypto Price Prediction using RNN & LSTM")
-
-ok = setup_models()
-
-if not ok:
+# Final check
+if not os.path.exists(MODELS_DIR):
+    st.error("❌ 'models_output' folder not found after extraction. Please check your Google Drive link or folder name inside zip.")
     st.stop()
 
-# Get all coin folders
+st.success("✅ Models extracted successfully!")
+
+# -----------------------------
+# STEP 2: Streamlit UI
+# -----------------------------
+st.title("📈 Crypto Price Prediction using RNN & LSTM")
+
 coin_folders = [f for f in os.listdir(MODELS_DIR) if os.path.isdir(os.path.join(MODELS_DIR, f))]
 
 if not coin_folders:
-    st.error("No coin model folders found in models_output.")
+    st.error("No coin model folders found inside models_output/")
     st.stop()
 
-# Dropdown for coin selection
-coin_name = st.selectbox("Select a cryptocurrency:", sorted(coin_folders))
+selected_coin = st.selectbox("Select a cryptocurrency:", coin_folders)
 
-coin_folder = os.path.join(MODELS_DIR, coin_name)
-scaler, lstm_model, preds_df = load_coin_data(coin_folder)
+coin_dir = os.path.join(MODELS_DIR, selected_coin)
+preds_path = os.path.join(coin_dir, f"{selected_coin}_predictions.csv")
 
-if scaler is None:
-    st.stop()
+if os.path.exists(preds_path):
+    preds = pd.read_csv(preds_path)
 
-# -----------------------------
-# STEP 5: SHOW ACTUAL VS PREDICTED
-# -----------------------------
-st.subheader(f"📊 {coin_name} - Actual vs Predicted Prices")
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.plot(preds_df['actual'], label='Actual', linewidth=2)
-ax.plot(preds_df['lstm_pred'], label='Predicted (LSTM)', linestyle='dashed')
-ax.set_title(f"{coin_name} - Actual vs LSTM Predicted")
-ax.legend()
-st.pyplot(fig)
+    # --- Plot actual vs predicted ---
+    st.subheader(f"📊 Actual vs Predicted Prices for {selected_coin}")
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(preds['actual'], label="Actual", color="black")
+    ax.plot(preds['rnn_pred'], label="RNN Prediction", linestyle="--")
+    ax.plot(preds['lstm_pred'], label="LSTM Prediction", linestyle=":")
+    ax.legend()
+    st.pyplot(fig)
 
-# -----------------------------
-# STEP 6: 15-DAY FORECAST
-# -----------------------------
-st.subheader("🔮 15-Day Future Price Forecast")
+    # --- Load best model and predict next 15 days ---
+    meta = joblib.load(os.path.join(coin_dir, f"{selected_coin}_meta.pkl"))
+    scaler = joblib.load(meta['scaler_path'])
 
-# Load recent close prices for forecasting
-try:
-    df_pred_source = pd.read_csv(os.path.join(coin_folder, f"{coin_name}_predictions.csv"))
-    series = df_pred_source['actual'].values.reshape(-1, 1)
-    preds_future = forecast_next_days(lstm_model, scaler, series)
+    model_path = os.path.join(coin_dir, f"{selected_coin}_lstm_best.h5")
+    if not os.path.exists(model_path):
+        model_path = os.path.join(coin_dir, f"{selected_coin}_rnn_best.h5")
+
+    model = tf.keras.models.load_model(model_path)
+
+    # Predict next 15 days
+    last_window = preds['actual'].values[-meta['window_size']:]
+    scaled_window = scaler.transform(last_window.reshape(-1, 1)).reshape(1, meta['window_size'], 1)
+
+    preds_future = []
+    for _ in range(15):
+        pred = model.predict(scaled_window)[0][0]
+        preds_future.append(pred)
+        scaled_window = np.append(scaled_window[:, 1:, :], [[[pred]]], axis=1)
+
+    preds_future = scaler.inverse_transform(np.array(preds_future).reshape(-1, 1)).flatten()
+    st.subheader("🔮 Next 15 Days Price Prediction")
     st.line_chart(preds_future)
-    st.success("✅ Forecast generated successfully!")
-except Exception as e:
-    st.error(f"Forecast failed: {e}")
 
-st.caption("Made with ❤️ using RNN & LSTM on cryptocurrency datasets.")
-
+else:
+    st.warning(f"No prediction file found for {selected_coin}.")
