@@ -9,29 +9,44 @@ import matplotlib.pyplot as plt
 from tensorflow.keras.models import load_model
 
 # ------------------------------------------------
-# 🗂️ 1. Setup: Download and unzip models if missing
+# 🗂️ 1. Download + unzip models if missing
 # ------------------------------------------------
 def setup_models():
     models_dir = "models_output"
     zip_file = "models_output.zip"
 
+    # Already exists
     if os.path.exists(models_dir):
-        print("✅ Models folder already exists — skipping download.")
-        return
+        return True
 
-    FILE_ID = "1Hz4UFpIbNdwhSJZlLUIxCIP4OMxnzKWJ"  # 👈 only this part
+    FILE_ID = "1Hz4UFpIbNdwhSJZlLUIxCIP4OMxnzKWJ"  # 👈 change if you reupload
     url = f"https://drive.google.com/uc?id={FILE_ID}"
 
-    print("⬇️ Downloading models_output.zip from Google Drive...")
-    gdown.download(url, zip_file, quiet=False)
+    st.info("⬇️ Downloading trained models from Google Drive... (~67MB)")
+    try:
+        gdown.download(url, zip_file, quiet=False)
+    except Exception as e:
+        st.error(f"Download failed: {e}")
+        return False
 
-    print("📦 Extracting models_output.zip ...")
-    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-        zip_ref.extractall(".")
-    
-    print("✅ Extraction complete! Models ready to use.")
+    # Extract
+    if os.path.exists(zip_file):
+        try:
+            with zipfile.ZipFile(zip_file, "r") as zip_ref:
+                zip_ref.extractall(".")
+            st.success("✅ Models extracted successfully!")
+            return True
+        except zipfile.BadZipFile:
+            st.error("❌ Bad ZIP file — please make sure your Google Drive file is shared as 'Anyone with link'.")
+            return False
+    else:
+        st.error("❌ Could not find downloaded zip file.")
+        return False
 
-setup_models()
+
+if not setup_models():
+    st.stop()
+
 
 # ------------------------------------------------
 # ⚙️ 2. Helper functions
@@ -39,7 +54,6 @@ setup_models()
 def load_coin_models(coin_name):
     base_path = os.path.join("models_output", coin_name)
     if not os.path.exists(base_path):
-        st.error(f"No model found for {coin_name}")
         return None, None, None
 
     lstm_path = os.path.join(base_path, f"{coin_name}_lstm_best.h5")
@@ -84,10 +98,18 @@ def predict_next_days(model, data, scaler, window_size=60, days=15):
 st.set_page_config(page_title="Crypto Prediction App", page_icon="📈", layout="centered")
 st.title("📈 Crypto Price Prediction using RNN & LSTM")
 
-# Find all coins available in models_output/
-coin_folders = [f for f in os.listdir("models_output") if os.path.isdir(os.path.join("models_output", f))]
-coin_folders.sort()
+# Check folder exists before listing
+if not os.path.exists("models_output"):
+    st.error("❌ 'models_output' folder not found after extraction. Please check your Google Drive link.")
+    st.stop()
 
+# List all coin folders
+coin_folders = [f for f in os.listdir("models_output") if os.path.isdir(os.path.join("models_output", f))]
+if not coin_folders:
+    st.error("No coin models found inside 'models_output'. Make sure your ZIP has correct structure.")
+    st.stop()
+
+coin_folders.sort()
 selected_coin = st.selectbox("Select a coin:", coin_folders)
 
 if selected_coin:
@@ -102,7 +124,6 @@ if selected_coin:
 
         lstm_model, rnn_model, scaler = load_coin_models(selected_coin)
         if lstm_model and scaler:
-            # Use LSTM for future forecast
             last_close = df_preds["actual"].values
             future_preds = predict_next_days(lstm_model, last_close, scaler, window_size=60, days=15)
 
