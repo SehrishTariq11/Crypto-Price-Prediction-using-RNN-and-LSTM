@@ -2,23 +2,38 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from src.train_rnn import create_rnn_model
-from src.train_lstm import create_lstm_model
+import sys
+import os
 
+# -----------------------------
+# Add src folder to Python path
+# -----------------------------
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+
+from train_rnn import create_rnn_model
+from train_lstm import create_lstm_model
+
+st.set_page_config(page_title="Crypto Price Prediction", layout="wide")
 st.title("📈 Crypto Price Prediction Dashboard")
 
 # -----------------------------
 # Load coins
 # -----------------------------
-import os
 DATA_DIR = "preprocessed_datasets"
-coin_files = [f for f in os.listdir(DATA_DIR) if f.endswith("_scaled.csv")]
-coins = [f.replace("_scaled.csv","") for f in coin_files]
+if not os.path.exists(DATA_DIR):
+    st.error(f"Folder '{DATA_DIR}' not found. Please preprocess your datasets first.")
+    st.stop()
 
+coin_files = [f for f in os.listdir(DATA_DIR) if f.endswith("_scaled.csv")]
+if not coin_files:
+    st.error("No preprocessed coin files found in 'preprocessed_datasets/'")
+    st.stop()
+
+coins = [f.replace("_scaled.csv","") for f in coin_files]
 selected_coin = st.selectbox("Select a Coin", coins)
 
 # -----------------------------
-# Load CSV
+# Load selected coin CSV
 # -----------------------------
 df_scaled = pd.read_csv(os.path.join(DATA_DIR, f"{selected_coin}_scaled.csv"))
 adj_min = df_scaled['adjclose'].min()
@@ -33,12 +48,14 @@ X, y = [], []
 for i in range(TIME_STEPS, len(data_scaled)):
     X.append(data_scaled[i-TIME_STEPS:i,0])
     y.append(data_scaled[i,0])
+
 X, y = np.array(X), np.array(y)
 X = X.reshape((X.shape[0], X.shape[1],1))
 
 # -----------------------------
 # Train RNN
 # -----------------------------
+st.text("Training RNN model... (short demo)")
 rnn_model = create_rnn_model(X.shape[1:])
 rnn_model.fit(X, y, epochs=3, batch_size=32, verbose=0)
 rnn_loss = rnn_model.evaluate(X, y, verbose=0)
@@ -46,12 +63,13 @@ rnn_loss = rnn_model.evaluate(X, y, verbose=0)
 # -----------------------------
 # Train LSTM
 # -----------------------------
+st.text("Training LSTM model... (short demo)")
 lstm_model = create_lstm_model(X.shape[1:])
 lstm_model.fit(X, y, epochs=3, batch_size=32, verbose=0)
 lstm_loss = lstm_model.evaluate(X, y, verbose=0)
 
 # -----------------------------
-# Choose the best model
+# Choose best model
 # -----------------------------
 if lstm_loss < rnn_loss:
     best_model = lstm_model
@@ -60,7 +78,7 @@ else:
     best_model = rnn_model
     model_name = "RNN"
 
-st.write(f"✅ Best model for {selected_coin}: **{model_name}** (Lower Loss: {min(rnn_loss, lstm_loss):.4f})")
+st.success(f"✅ Best model for {selected_coin}: {model_name} (Lower Loss: {min(rnn_loss, lstm_loss):.4f})")
 
 # -----------------------------
 # Predict historical data
