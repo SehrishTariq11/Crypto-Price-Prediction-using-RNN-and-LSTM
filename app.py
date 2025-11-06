@@ -29,12 +29,15 @@ def setup_models():
                 zip_ref.extractall(".")
             st.success("✅ Models extracted successfully!")
 
-        # Handle if folder name inside zip isn't exact
+               # Try to find any folder that contains model files
         if not os.path.exists(MODELS_DIR):
             for f in os.listdir("."):
-                if os.path.isdir(f) and "model" in f.lower():
-                    os.rename(f, MODELS_DIR)
+                path = os.path.join(".", f)
+                if os.path.isdir(path) and any(x in f.lower() for x in ["model", "output"]):
+                    os.rename(path, MODELS_DIR)
+                    st.info(f"📁 Renamed extracted folder '{f}' → '{MODELS_DIR}'")
                     break
+
 
         if not os.path.exists(MODELS_DIR):
             st.error("❌ 'models_output' folder not found after extraction. Please check your Google Drive link.")
@@ -128,3 +131,4 @@ except Exception as e:
     st.error(f"Forecast failed: {e}")
 
 st.caption("Made with ❤️ using RNN & LSTM on cryptocurrency datasets.")
+
