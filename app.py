@@ -135,6 +135,5 @@ with col2:
     ax2.set_ylabel("Predicted Price")
     ax2.legend()
     st.pyplot(fig2)
-code.txt
-Displaying code.txt.
+
 
